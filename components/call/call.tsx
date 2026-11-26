@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { RiMicOffLine, RiPhoneFill } from "@remixicon/react";
+import { useEffect, useRef, useState } from "react";
+import { google } from "@ai-sdk/google";
+import { experimental_useRealtime } from "@ai-sdk/react";
+import { RiMicLine, RiMicOffLine, RiPhoneFill } from "@remixicon/react";
 
 import { AssistantHeader } from "@/components/assistant-header";
 import { CallControls } from "@/components/call/call-controls";
@@ -10,13 +12,20 @@ import { CallTranscript } from "@/components/call/call-transcript";
 import { VoiceOrb } from "@/components/call/voice-orb";
 import { Button } from "@/components/ui/button";
 import { Waveform } from "@/components/waveform";
+import { CALL_STARTED, VOICE_MODEL, voiceSessionConfig } from "@/lib/ai/voice";
 import {
   formatDuration,
-  mockCallBooking,
-  mockCallScript,
   type CallStatus,
   type TranscriptLine,
 } from "@/lib/call";
+import { toBooking, type Booking } from "@/lib/chat";
+
+const model = google.experimental_realtime(VOICE_MODEL);
+
+const toolRoutes: Record<string, string> = {
+  getAvailableSlots: "/api/booking/slots",
+  createBooking: "/api/booking/book",
+};
 
 const headerStatus: Record<CallStatus, string> = {
   idle: "Online · ready to talk",
@@ -26,19 +35,91 @@ const headerStatus: Record<CallStatus, string> = {
 };
 
 export function Call() {
-  const [status, setStatus] = useState<CallStatus>("idle");
-  const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
+  const [phase, setPhase] = useState<"idle" | "live" | "ended">("idle");
+  const [hasConnected, setHasConnected] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [muted, setMuted] = useState(false);
+  const [booking, setBooking] = useState<Booking>();
+  const [error, setError] = useState<string>();
+  const [transcriptFrom, setTranscriptFrom] = useState(0);
+  const greetedRef = useRef(false);
 
-  const speaker = transcript.at(-1)?.role;
-  const booked = transcript.length === mockCallScript.length;
+  const realtime = experimental_useRealtime({
+    model,
+    api: { token: "/api/realtime/setup" },
+    sessionConfig: voiceSessionConfig,
+    onToolCall: async ({ toolCall }) => {
+      const route = toolRoutes[toolCall.toolName];
+      if (!route) return { error: `Unknown tool ${toolCall.toolName}` };
+
+      try {
+        const response = await fetch(route, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(toolCall.args),
+        });
+        const result = await response.json();
+
+        if (response.ok && toolCall.toolName === "createBooking") {
+          setBooking(toBooking(result));
+        }
+
+        return result;
+      } catch {
+        return { error: "The booking system is unavailable right now." };
+      }
+    },
+    onEvent: (event) => {
+      if (event.type === "session-created") setHasConnected(true);
+    },
+    onError: (error) => console.error("Call error:", error),
+  });
 
   useEffect(() => {
-    if (status !== "connecting") return;
-    const timeout = setTimeout(() => setStatus("active"), 1500);
-    return () => clearTimeout(timeout);
-  }, [status]);
+    if (realtime.status !== "connected" || greetedRef.current) return;
+    greetedRef.current = true;
+
+    realtime.sendTextMessage(CALL_STARTED);
+    realtime.resumeAudioCapture().catch(() => {
+      setError(
+        "Voia needs your microphone. Allow access in your browser and call again.",
+      );
+      realtime.disconnect();
+      setPhase("ended");
+    });
+  }, [realtime]);
+
+  const dropped =
+    phase === "live" &&
+    (realtime.status === "error" ||
+      (hasConnected && realtime.status === "disconnected"));
+
+  const status: CallStatus =
+    phase === "idle"
+      ? "idle"
+      : phase === "ended" || dropped
+        ? "ended"
+        : realtime.status === "connected"
+          ? "active"
+          : "connecting";
+
+  const isSpeaking = status === "active" && realtime.isPlaying;
+
+  const transcript: TranscriptLine[] = realtime.messages
+    .slice(transcriptFrom)
+    .flatMap((message) => {
+      if (message.role !== "user" && message.role !== "assistant") return [];
+
+      const text = message.parts
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+        .trim();
+
+      if (!text || text === CALL_STARTED) return [];
+
+      return [{ id: message.id, role: message.role, text }];
+    });
 
   useEffect(() => {
     if (status !== "active") return;
@@ -46,25 +127,30 @@ export function Call() {
     return () => clearInterval(interval);
   }, [status]);
 
-  useEffect(() => {
-    if (status !== "active") return;
-    let elapsed = 0;
-    const timeouts = mockCallScript.map(({ delay, ...line }) => {
-      elapsed += delay;
-      return setTimeout(
-        () => setTranscript((current) => [...current, line]),
-        elapsed,
-      );
-    });
-    timeouts.push(setTimeout(() => setStatus("ended"), elapsed + 2500));
-    return () => timeouts.forEach(clearTimeout);
-  }, [status]);
-
   function startCall() {
-    setTranscript([]);
+    greetedRef.current = false;
+    setTranscriptFrom(realtime.messages.length);
+    setHasConnected(false);
     setSeconds(0);
     setMuted(false);
-    setStatus("connecting");
+    setBooking(undefined);
+    setError(undefined);
+    setPhase("live");
+    void realtime.connect();
+  }
+
+  function endCall() {
+    realtime.disconnect();
+    setPhase("ended");
+  }
+
+  function toggleMute() {
+    if (muted) {
+      realtime.resumeAudioCapture().catch(() => setMuted(true));
+    } else {
+      realtime.stopAudioCapture();
+    }
+    setMuted(!muted);
   }
 
   return (
@@ -83,17 +169,18 @@ export function Call() {
         <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center px-4 py-8 text-center sm:px-6">
           {status === "ended" ? (
             <CallSummary
-              booking={booked ? mockCallBooking : undefined}
+              booking={booking}
+              error={
+                error ??
+                (dropped ? "The call dropped. Please try again." : undefined)
+              }
               seconds={seconds}
               onRestart={startCall}
             />
           ) : (
             <>
               <div className="flex flex-1 flex-col items-center justify-center">
-                <VoiceOrb
-                  status={status}
-                  isSpeaking={status === "active" && speaker === "assistant"}
-                />
+                <VoiceOrb status={status} isSpeaking={isSpeaking} />
 
                 {status === "idle" && (
                   <>
@@ -101,8 +188,8 @@ export function Call() {
                       Talk to Voia
                     </h2>
                     <p className="mt-2 max-w-xs text-pretty text-muted-foreground">
-                      Book, move or cancel an appointment just by saying it.
-                      Most calls take under a minute.
+                      Book an appointment just by saying it. Most calls take
+                      under a minute.
                     </p>
                   </>
                 )}
@@ -124,7 +211,11 @@ export function Call() {
                       {formatDuration(seconds)}
                     </p>
                     <div className="mt-2 flex h-5 items-center justify-center gap-2 text-sm text-muted-foreground">
-                      <ActivityLabel muted={muted} speaker={speaker} />
+                      <ActivityLabel
+                        muted={muted}
+                        isSpeaking={isSpeaking}
+                        isCapturing={realtime.isCapturing}
+                      />
                     </div>
                   </>
                 )}
@@ -151,8 +242,8 @@ export function Call() {
                     <CallControls
                       muted={muted}
                       disabled={status !== "active"}
-                      onToggleMute={() => setMuted((m) => !m)}
-                      onEnd={() => setStatus("ended")}
+                      onToggleMute={toggleMute}
+                      onEnd={endCall}
                     />
                   </div>
                 </>
@@ -167,10 +258,12 @@ export function Call() {
 
 function ActivityLabel({
   muted,
-  speaker,
+  isSpeaking,
+  isCapturing,
 }: {
   muted: boolean;
-  speaker?: TranscriptLine["role"];
+  isSpeaking: boolean;
+  isCapturing: boolean;
 }) {
   if (muted) {
     return (
@@ -181,14 +274,21 @@ function ActivityLabel({
     );
   }
 
-  if (speaker === "user") {
+  if (isSpeaking) return "Voia is speaking";
+
+  if (!isCapturing) {
     return (
       <>
-        <Waveform className="h-4 text-primary" />
-        Listening
+        <RiMicLine className="size-4" />
+        Waiting for your microphone…
       </>
     );
   }
 
-  return speaker === "assistant" ? "Voia is speaking" : "Connected";
+  return (
+    <>
+      <Waveform className="h-4 text-primary" />
+      Listening
+    </>
+  );
 }

@@ -4,6 +4,7 @@ import {
   listBarbers,
   listServices,
 } from "./store";
+import { BookingError } from "./errors";
 import { shopNow } from "./clock";
 
 export const calculateSlots = (
@@ -39,7 +40,7 @@ export const getAvailableSlots = (input: {
   const now = shopNow();
 
   if (input.date < now.date) {
-    throw new Error("That date has already passed");
+    throw new BookingError("That date has already passed");
   }
 
   const booked = listAppointments(input.barberId, input.date).map(
@@ -72,15 +73,15 @@ export const createBooking = (input: {
   const barber = listBarbers().find((barber) => barber.id === input.barberId);
 
   if (!barber?.id) {
-    throw new Error("That barber doesn't exist");
+    throw new BookingError("That barber doesn't exist");
   }
 
   if (!service?.id) {
-    throw new Error("That service doesn't exist");
+    throw new BookingError("That service doesn't exist");
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
-    throw new Error("Invalid Date");
+    throw new BookingError("Invalid Date");
   }
 
   const start = getAvailableSlots({
@@ -90,7 +91,7 @@ export const createBooking = (input: {
   }).find((start) => start === input.start);
 
   if (!start) {
-    throw new Error("That time isn't available");
+    throw new BookingError("That time isn't available");
   }
 
   const end = start + service.durationMinutes;

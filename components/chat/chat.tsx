@@ -16,6 +16,7 @@ import {
 import { SlotPicker } from "@/components/chat/slot-picker";
 import { Button } from "@/components/ui/button";
 import type { tools } from "@/lib/ai/tools";
+import { formatDate, toBooking } from "@/lib/chat";
 import { cn } from "@/lib/utils";
 import { useChat } from "@ai-sdk/react";
 
@@ -24,15 +25,6 @@ type ChatPart = ChatMessage["parts"][number];
 
 const enter =
   "animate-in duration-300 fade-in slide-in-from-bottom-2 motion-reduce:animate-none";
-
-function formatDate(date: string) {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 function ToolStatus({ children }: { children: React.ReactNode }) {
   return (
@@ -123,19 +115,11 @@ export function Chat() {
 
         if (part.state !== "output-available") return null;
 
-        const booking = part.output;
-
         return (
           <BookingCard
             key={key}
             className={enter}
-            booking={{
-              service: booking.service,
-              barber: booking.barber,
-              date: formatDate(booking.date),
-              time: booking.time,
-              price: `$${booking.price}`,
-            }}
+            booking={toBooking(part.output)}
           />
         );
       }

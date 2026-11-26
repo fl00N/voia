@@ -13,10 +13,12 @@ import { cn } from "@/lib/utils";
 
 export function CallSummary({
   booking,
+  error,
   seconds,
   onRestart,
 }: {
   booking?: Booking;
+  error?: string;
   seconds: number;
   onRestart: () => void;
 }) {
@@ -43,7 +45,7 @@ export function CallSummary({
       <p className="mt-1 text-sm text-muted-foreground tabular-nums">
         {booking
           ? `Call ended · ${formatDuration(seconds)}`
-          : "No booking was made. You can call again anytime."}
+          : (error ?? "No booking was made. You can call again anytime.")}
       </p>
 
       {booking && (
