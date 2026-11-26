@@ -16,8 +16,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { Booking } from "@/lib/chat";
+import { cn } from "@/lib/utils";
 
-export function BookingCard({ booking }: { booking: Booking }) {
+export function BookingCard({
+  booking,
+  className,
+}: {
+  booking: Booking;
+  className?: string;
+}) {
   const details = [
     { icon: RiUserLine, label: "Barber", value: booking.barber },
     { icon: RiCalendarLine, label: "Date", value: booking.date },
@@ -28,14 +35,19 @@ export function BookingCard({ booking }: { booking: Booking }) {
   return (
     <Card
       size="sm"
-      className="w-full max-w-sm rounded-3xl shadow-none ring-foreground/10"
+      className={cn(
+        "w-full max-w-sm rounded-3xl shadow-none ring-foreground/10",
+        className,
+      )}
     >
       <CardHeader>
         <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
           <RiCheckboxCircleFill className="size-4" />
           Booking confirmed
         </p>
-        <CardTitle className="text-lg">{booking.service}</CardTitle>
+        <CardTitle className="text-lg first-letter:uppercase">
+          {booking.service}
+        </CardTitle>
       </CardHeader>
 
       <CardContent>

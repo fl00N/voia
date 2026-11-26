@@ -1,16 +1,8 @@
-import {
-  RiCalendarEventLine,
-  RiScissorsCutLine,
-  RiSparkling2Fill,
-  RiTimeLine,
-  RiUserStarLine,
-} from "@remixicon/react";
+import { RiSparkling2Fill, RiTimeLine, RiUserStarLine } from "@remixicon/react";
 
 const suggestions = [
-  { icon: RiScissorsCutLine, text: "Haircut tomorrow after 5" },
-  { icon: RiUserStarLine, text: "Skin fade + beard trim with Marco" },
+  { icon: RiUserStarLine, text: "Trim with Alex" },
   { icon: RiTimeLine, text: "What's the earliest slot today?" },
-  { icon: RiCalendarEventLine, text: "Move my booking to Friday" },
 ];
 
 export function ChatEmptyState({

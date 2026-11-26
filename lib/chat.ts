@@ -1,3 +1,5 @@
+export const MAX_MESSAGE_LENGTH = 100;
+
 export type Booking = {
   service: string;
   barber: string;

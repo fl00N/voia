@@ -5,6 +5,8 @@ import Link from "next/link";
 import { RiArrowUpLine, RiMicLine } from "@remixicon/react";
 
 import { Button } from "@/components/ui/button";
+import { MAX_MESSAGE_LENGTH } from "@/lib/chat";
+import { cn } from "@/lib/utils";
 
 export function ChatComposer({
   onSend,
@@ -15,9 +17,10 @@ export function ChatComposer({
 }) {
   const [value, setValue] = useState("");
   const canSend = value.trim().length > 0 && !disabled;
+  const isNearLimit = value.length >= MAX_MESSAGE_LENGTH - 20;
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     if (!canSend) return;
     onSend(value.trim());
     setValue("");
@@ -49,9 +52,22 @@ export function ChatComposer({
           value={value}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={handleKeyDown}
+          maxLength={MAX_MESSAGE_LENGTH}
+          aria-describedby={isNearLimit ? "chat-input-count" : undefined}
           placeholder="Message Voia…"
           className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-3 py-1.5 text-[15px] leading-6 outline-none field-sizing-content placeholder:text-muted-foreground"
         />
+        {isNearLimit && (
+          <span
+            id="chat-input-count"
+            className={cn(
+              "flex h-9 items-center px-1 text-xs text-muted-foreground tabular-nums",
+              value.length >= MAX_MESSAGE_LENGTH && "text-destructive",
+            )}
+          >
+            {value.length}/{MAX_MESSAGE_LENGTH}
+          </span>
+        )}
         <Button
           variant="ghost"
           size="icon"
